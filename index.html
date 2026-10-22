@@ -190,7 +190,8 @@
   </footer>
 </div>
 
-<script src="data.js"></script>
+<!-- data.js を更新したら v= の数字も上げる（古い data.js がキャッシュから読まれるのを防ぐ） -->
+<script src="data.js?v=3"></script>
 <script>
 (() => {
   const $ = (s, el = document) => el.querySelector(s);
@@ -338,7 +339,7 @@
 
   // ---- 二択モード
   const dummyOf = c => {
-    const d = DUMMY[`${c.l}|${c.a}`];
+    const d = typeof DUMMY !== "undefined" && DUMMY[`${c.l}|${c.a}`];
     if (d) return d;
     // 用意していない語句は同じ単元の別の答えから選ぶ
     let others = CARDS.filter(o => o.l === c.l && o.a !== c.a);
