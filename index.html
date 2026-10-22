@@ -55,7 +55,7 @@
   .tabs { display: flex; gap: 6px; background: var(--surface-2); padding: 4px; border-radius: 12px; margin-bottom: 12px; }
   .tabs button {
     flex: 1; border: 0; background: transparent; padding: 9px 4px; border-radius: 9px; cursor: pointer;
-    font-weight: 600; color: var(--muted);
+    font-weight: 600; color: var(--muted); white-space: nowrap;
   }
   .tabs button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
 
@@ -115,6 +115,17 @@
   .verdict.ng { background: var(--ng-weak); color: var(--ng); }
   .verdict .correct { color: var(--text); font-weight: 400; display: block; margin-top: 2px; }
 
+  .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+  .choice {
+    border: 1.5px solid var(--border); background: var(--surface); border-radius: 12px; padding: 14px 10px;
+    cursor: pointer; font-weight: 700; font-size: 1.02rem; text-align: center; line-height: 1.4;
+  }
+  .choice kbd { display: block; margin: 4px 0 0; }
+  .choice:disabled { cursor: default; }
+  .choice.right { background: var(--ok-weak); border-color: var(--ok); color: var(--ok); }
+  .choice.wrong { background: var(--ng-weak); border-color: var(--ng); color: var(--ng); }
+  .choice.dim { opacity: .45; }
+
   .result { text-align: center; padding: 10px 0; }
   .result .big { font-size: 2.4rem; font-weight: 700; margin: 4px 0; }
   .result ul { text-align: left; padding-left: 1.2em; }
@@ -147,7 +158,8 @@
 
   <div class="tabs" role="tablist">
     <button role="tab" data-mode="card" aria-selected="true">カード</button>
-    <button role="tab" data-mode="input" aria-selected="false">入力テスト</button>
+    <button role="tab" data-mode="choice" aria-selected="false">二択</button>
+    <button role="tab" data-mode="input" aria-selected="false">入力</button>
     <button role="tab" data-mode="list" aria-selected="false">一覧</button>
   </div>
 
@@ -324,6 +336,59 @@
     };
   }
 
+  // ---- 二択モード
+  const dummyOf = c => {
+    const d = DUMMY[`${c.l}|${c.a}`];
+    if (d) return d;
+    // 用意していない語句は同じ単元の別の答えから選ぶ
+    let others = CARDS.filter(o => o.l === c.l && o.a !== c.a);
+    if (!others.length) others = CARDS.filter(o => o.a !== c.a);
+    return others[Math.floor(Math.random() * others.length)].a;
+  };
+  function startChoice(cards) {
+    const deck = makeDeck(cards).map(c => {
+      const opts = [c.a, dummyOf(c)];
+      if (Math.random() < .5) opts.reverse();
+      return { c, opts };
+    });
+    session = { deck, i: 0, picked: null, results: [] };
+    renderChoice();
+  }
+  function renderChoice() {
+    const s = session;
+    if (!s.deck.length) { main.innerHTML = emptyHtml(); keyHandler = null; return; }
+    if (s.i >= s.deck.length) return renderResult(s, startChoice);
+    const { c, opts } = s.deck[s.i];
+    const p = s.picked;
+    const done = p !== null;
+    const cls = o => !done ? "" : o === c.a ? "right" : o === p ? "wrong" : "dim";
+    main.innerHTML = `<div class="panel">
+      ${metaHtml(c, s.i, s.deck.length)}
+      <div class="question">${sentence(c, done)}</div>
+      <div class="reading">${done ? esc(c.r) : ""}</div>
+      <div class="choices">
+        ${opts.map((o, k) => `<button class="choice ${cls(o)}" data-k="${k}" ${done ? "disabled" : ""}>${esc(o)}<kbd>${k + 1}</kbd></button>`).join("")}
+      </div>
+      ${done ? `
+        <div class="verdict ${p === c.a ? "ok" : "ng"}">${p === c.a ? "○ 正解！" : "× 不正解"}
+          <span class="correct">${esc(c.a)}（${esc(c.r)}）</span></div>
+        ${c.note ? `<div class="note">※${esc(c.note)}</div>` : ""}
+        <div class="actions"><button class="btn primary" id="next">次へ<kbd>Enter</kbd></button></div>` : ""}
+    </div>`;
+    const pick = o => { s.picked = o; record(c, o === c.a); s.results.push({ c, ok: o === c.a }); renderChoice(); };
+    const next = () => { s.i++; s.picked = null; renderChoice(); };
+    if (!done) {
+      main.querySelectorAll(".choice").forEach(b => b.onclick = () => pick(opts[b.dataset.k]));
+      keyHandler = e => {
+        if (e.key === "1" || e.key === "ArrowLeft") pick(opts[0]);
+        else if (e.key === "2" || e.key === "ArrowRight") pick(opts[1]);
+      };
+    } else {
+      $("#next").onclick = next;
+      keyHandler = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); next(); } };
+    }
+  }
+
   // ---- 入力テストモード
   function startInput(cards) {
     const deck = makeDeck(cards);
@@ -422,6 +487,7 @@
 
   function start() {
     if (state.mode === "card") startCard();
+    else if (state.mode === "choice") startChoice();
     else if (state.mode === "input") startInput();
     else renderList();
   }
